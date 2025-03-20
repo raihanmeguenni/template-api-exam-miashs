@@ -16,13 +16,13 @@ export const getCityInfos = async (request, reply) => {
     }
     const cityData = await cityResponse.json();
 
-    // 🔹 Vérifier et formater les données
+    // 🔹 Vérification et formatage des données
     const coordinates = Array.isArray(cityData.coordinates) ? cityData.coordinates : [0, 0];
     const population = typeof cityData.population === "number" ? cityData.population : 0;
     const knownFor = Array.isArray(cityData.knownFor) ? cityData.knownFor : [];
 
     // 🔹 Récupérer la météo
-    const weatherResponse = await fetch(`${API_BASE_URL}/weather-predictions?cityId=${cityId}&apiKey=${API_KEY}`);
+    const weatherResponse = await fetch(`${API_BASE_URL}/weather?cityId=${cityId}&apiKey=${API_KEY}`);
     let weatherPredictions = [
       { when: "today", min: 0, max: 0 },
       { when: "tomorrow", min: 0, max: 0 }
@@ -30,15 +30,13 @@ export const getCityInfos = async (request, reply) => {
 
     if (weatherResponse.ok) {
       const weatherData = await weatherResponse.json();
-      weatherPredictions = Array.isArray(weatherData.predictions) && weatherData.predictions.length >= 2
-        ? weatherData.predictions.slice(0, 2)
-        : weatherPredictions;
+      weatherPredictions = weatherData.predictions.slice(0, 2);
     }
 
     // 🔹 Récupérer les recettes associées à la ville
     const recipes = recipesDB[cityId] || [];
 
-    // 🔹 Envoyer la réponse formatée
+    // 🔹 Réponse conforme à la documentation
     reply.send({
       coordinates,
       population,
