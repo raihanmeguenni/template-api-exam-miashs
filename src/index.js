@@ -1,26 +1,31 @@
-import 'dotenv/config';
-import Fastify from 'fastify';
-import routes from './routes.js';
-import { submitForReview } from './submission.js';
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const routes = require('./routes');
 
-const fastify = Fastify({ logger: true });
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Définition des routes
-fastify.get('/cities/:cityId/infos', routes.getCityInfos);
-fastify.post('/cities/:cityId/recipes', routes.postRecipe);
-fastify.delete('/cities/:cityId/recipes/:recipeId', routes.deleteRecipe);
+// Middleware
+app.use(cors());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// Lancement du serveur
-fastify.listen(
-  {
-    port: process.env.PORT || 3000,
-    host: process.env.RENDER_EXTERNAL_URL ? '0.0.0.0' : process.env.HOST || 'localhost',
-  },
-  function (err) {
-    if (err) {
-      fastify.log.error(err);
-      process.exit(1);
-    }
-    submitForReview(fastify); // Soumission automatique de l'API après le démarrage
-  }
-);
+// Apply routes
+routes(app);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    error: 'Internal Server Error'
+  });
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
+
+module.exports = app;
