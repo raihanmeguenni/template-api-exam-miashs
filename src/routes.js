@@ -1,7 +1,7 @@
 import fetch from "node-fetch";
 
-
 const API_BASE_URL = "https://api-ugi2pflmha-ew.a.run.app";
+const API_KEY = process.env.API_KEY; // 🔑 Récupère la clé API depuis .env
 const recipesDB = {}; // Stockage des recettes en mémoire
 
 // ✅ Route GET /cities/:cityId/infos
@@ -9,8 +9,8 @@ export const getCityInfos = async (request, reply) => {
   const { cityId } = request.params;
 
   try {
-    // 🔹 Vérifier si la ville existe
-    const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}`);
+    // 🔹 Vérifier si la ville existe avec apiKey
+    const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}?apiKey=${API_KEY}`);
     if (!cityResponse.ok) {
       return reply.status(404).send({ error: "City not found" });
     }
@@ -26,7 +26,7 @@ export const getCityInfos = async (request, reply) => {
     const knownFor = Array.isArray(cityData.knownFor) ? cityData.knownFor : [];
 
     // 🔹 Récupérer les prévisions météo
-    const weatherResponse = await fetch(`${API_BASE_URL}/weather/${cityId}`);
+    const weatherResponse = await fetch(`${API_BASE_URL}/weather/${cityId}?apiKey=${API_KEY}`);
     let weatherPredictions = [
       { when: "today", min: 0, max: 0 },
       { when: "tomorrow", min: 0, max: 0 }
@@ -66,8 +66,8 @@ export const postRecipe = async (request, reply) => {
   if (content.length > 2000) return reply.status(400).send({ error: "Content too long" });
 
   try {
-    // Vérifier si la ville existe
-    const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}`);
+    // Vérifier si la ville existe avec apiKey
+    const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}?apiKey=${API_KEY}`);
     if (!cityResponse.ok) return reply.status(404).send({ error: "City not found" });
 
     if (!recipesDB[cityId]) recipesDB[cityId] = [];
