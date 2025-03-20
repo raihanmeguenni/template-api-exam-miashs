@@ -22,22 +22,26 @@ export const getCityInfos = async (request, reply) => {
     }
     const weatherData = await weatherResponse.json();
 
-    // 🔹 Vérifier que les prévisions météo sont bien sous forme de tableau de 2 éléments
+    // 🔹 Vérifier le format des prévisions météo (on prend seulement 2 objets)
     const weatherPredictions = Array.isArray(weatherData.predictions) && weatherData.predictions.length >= 2
-      ? weatherData.predictions.slice(0, 2) // S'assurer d'avoir uniquement les 2 premières prévisions
+      ? weatherData.predictions.slice(0, 2)
       : [
           { when: "today", min: 0, max: 0 },
           { when: "tomorrow", min: 0, max: 0 }
         ];
 
-    // 🔹 Construire la réponse formatée
-    reply.send({
-      coordinates: cityData.coordinates || [0, 0], // Vérification du format
-      population: cityData.population || 0,
+    // 🔹 Assurer un formatage correct des données
+    const formattedResponse = {
+      coordinates: Array.isArray(cityData.coordinates) && cityData.coordinates.length === 2
+        ? cityData.coordinates
+        : [0, 0],  // Valeurs par défaut si manquantes
+      population: typeof cityData.population === "number" ? cityData.population : 0,
       knownFor: Array.isArray(cityData.knownFor) ? cityData.knownFor : [],
       weatherPredictions,
-      recipes: recipesDB[cityId] || [],
-    });
+      recipes: recipesDB[cityId] || []
+    };
+
+    reply.send(formattedResponse);
 
   } catch (error) {
     reply.status(500).send({ error: "Server error" });
@@ -60,8 +64,13 @@ export const postRecipe = async (request, reply) => {
     if (!cityResponse.ok) return reply.status(404).send({ error: "City not found" });
 
     // 🔹 Ajouter la recette en mémoire
-    const newRecipe = { id: Date.now(), content };
     if (!recipesDB[cityId]) recipesDB[cityId] = [];
+    
+    const newRecipe = { 
+      id: recipesDB[cityId].length + 1, // ID unique basé sur le nombre d'éléments
+      content 
+    };
+    
     recipesDB[cityId].push(newRecipe);
 
     // 🔹 Vérifier le bon format de réponse
