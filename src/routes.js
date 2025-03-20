@@ -1,266 +1,90 @@
-const { v4: uuidv4 } = require('uuid');
+import fetch from "node-fetch";
 
-// Simulated data stores
-const groups = [];
-const apiKeys = new Map();
-const cities = [
-  { id: '1', name: 'Paris', country: 'France' },
-  { id: '2', name: 'London', country: 'UK' },
-  { id: '3', name: 'New York', country: 'USA' },
-];
+const API_BASE_URL = "https://api-ugi2pflmha-ew.a.run.app";
+const recipesDB = {}; // Base en mémoire pour stocker les recettes
 
-// Authentication middleware
-const authenticateApiKey = (req, res, next) => {
-  const apiKey = req.query.apiKey;
-  
-  if (!apiKey) {
-    return res.status(401).json({
-      success: false,
-      error: 'API key is required'
+// ✅ Route GET /cities/:cityId/infos
+export const getCityInfos = async (request, reply) => {
+  const { cityId } = request.params;
+
+  try {
+    // 🔹 Vérifier si la ville existe
+    const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}`);
+    if (!cityResponse.ok) {
+      return reply.status(404).send({ error: "City not found" });
+    }
+    const cityData = await cityResponse.json();
+
+    // 🔹 Vérifier les données de la ville
+    const coordinates = Array.isArray(cityData.coordinates) ? cityData.coordinates : [0, 0];
+    const population = typeof cityData.population === "number" ? cityData.population : 0;
+    const knownFor = Array.isArray(cityData.knownFor) ? cityData.knownFor : [];
+
+    // 🔹 Récupérer les prévisions météo
+    const weatherResponse = await fetch(`${API_BASE_URL}/weather/${cityId}`);
+    let weatherPredictions = [
+      { when: "today", min: 0, max: 0 },
+      { when: "tomorrow", min: 0, max: 0 }
+    ];
+
+    if (weatherResponse.ok) {
+      const weatherData = await weatherResponse.json();
+      weatherPredictions = Array.isArray(weatherData.predictions) && weatherData.predictions.length >= 2
+        ? weatherData.predictions.slice(0, 2)
+        : weatherPredictions;
+    }
+
+    // 🔹 Assurer que `recipes` est un tableau vide si aucune recette
+    const recipes = recipesDB[cityId] || [];
+
+    // 🔹 Envoyer la réponse formatée
+    reply.send({
+      coordinates,
+      population,
+      knownFor,
+      weatherPredictions,
+      recipes,
     });
-  }
 
-  const groupExists = apiKeys.has(apiKey);
-  if (!groupExists) {
-    return res.status(401).json({
-      success: false,
-      error: 'Invalid API key'
-    });
+  } catch (error) {
+    reply.status(500).send({ error: "Server error" });
   }
-  
-  next();
 };
 
-module.exports = (app) => {
-  // Group routes
-  app.get('/group/lastCheck', (req, res) => {
-    const apiKey = req.query.apiKey;
-    
-    if (apiKey && !apiKeys.has(apiKey)) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid API key'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      data: {
-        id: uuidv4(),
-        dateStart: new Date().toISOString(),
-        dateEnd: new Date(Date.now() + 3600000).toISOString(),
-        globalResult: {
-          success: true,
-          message: 'Group check successful'
-        },
-        results: {
-          getCitiesInfos: {},
-          postCityRecipes: {},
-          deleteCityRecipe: {}
-        }
-      }
-    });
-  });
+// ✅ Route POST /cities/:cityId/recipes
+export const postRecipe = async (request, reply) => {
+  const { cityId } = request.params;
+  const { content } = request.body;
 
-  app.post('/group/submissions', authenticateApiKey, (req, res) => {
-    const { apiUrl } = req.body;
-    
-    if (!apiUrl) {
-      return res.status(400).json({
-        error: 'API URL is required'
-      });
-    }
-    
-    // Process submission
-    return res.status(204).send();
-  });
+  if (!content) return reply.status(400).send({ error: "Recipe content is required" });
+  if (content.length < 10) return reply.status(400).send({ error: "Content too short" });
+  if (content.length > 2000) return reply.status(400).send({ error: "Content too long" });
 
-  // Admin routes
-  app.post('/admin/generate-groups', (req, res) => {
-    const { students } = req.body;
-    const updateExisting = req.query.updateExisting === 'true';
-    
-    if (!students || !Array.isArray(students)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Students array is required'
-      });
-    }
-    
-    let generatedCount = 0;
-    let skippedCount = 0;
-    
-    for (const student of students) {
-      const existingGroup = groups.find(g => g.name === student);
-      
-      if (existingGroup && !updateExisting) {
-        skippedCount++;
-        continue;
-      }
-      
-      if (existingGroup && updateExisting) {
-        existingGroup.apiKey = uuidv4();
-        apiKeys.set(existingGroup.apiKey, existingGroup);
-        generatedCount++;
-      } else {
-        const newApiKey = uuidv4();
-        const newGroup = { name: student, apiKey: newApiKey };
-        groups.push(newGroup);
-        apiKeys.set(newApiKey, newGroup);
-        generatedCount++;
-      }
-    }
-    
-    return res.status(200).json({
-      success: true,
-      message: `Generated ${generatedCount} groups, skipped ${skippedCount} groups`,
-      generatedCount,
-      skippedCount
-    });
-  });
+  try {
+    // Vérifier si la ville existe
+    const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}`);
+    if (!cityResponse.ok) return reply.status(404).send({ error: "City not found" });
 
-  app.get('/admin/groups', (req, res) => {
-    try {
-      return res.status(200).json({
-        success: true,
-        groups: groups.map(group => ({
-          name: group.name,
-          apiKey: group.apiKey
-        }))
-      });
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to retrieve groups'
-      });
-    }
-  });
+    if (!recipesDB[cityId]) recipesDB[cityId] = [];
+    const newRecipe = { id: recipesDB[cityId].length + 1, content };
+    recipesDB[cityId].push(newRecipe);
 
-  // Cities routes
-  app.get('/cities', (req, res) => {
-    const { search, apiKey } = req.query;
-    
-    if (apiKey && !apiKeys.has(apiKey)) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid API key'
-      });
-    }
-    
-    try {
-      let filteredCities = [...cities];
-      
-      if (search) {
-        filteredCities = filteredCities.filter(city => 
-          city.name.toLowerCase().includes(search.toLowerCase()) ||
-          city.country.toLowerCase().includes(search.toLowerCase())
-        );
-      }
-      
-      if (filteredCities.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'No cities found'
-        });
-      }
-      
-      return res.status(200).json(filteredCities);
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to retrieve cities'
-      });
-    }
-  });
+    reply.status(201).send(newRecipe);
 
-  app.get('/cities/:cityId/insights', (req, res) => {
-    const { cityId } = req.params;
-    const { apiKey } = req.query;
-    
-    if (apiKey && !apiKeys.has(apiKey)) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid API key'
-      });
-    }
-    
-    try {
-      const city = cities.find(c => c.id === cityId);
-      
-      if (!city) {
-        return res.status(404).json({
-          success: false,
-          error: 'City not found'
-        });
-      }
-      
-      // Mock data for city insights
-      const insights = {
-        coordinates: {
-          latitude: parseFloat((Math.random() * 180 - 90).toFixed(6)),
-          longitude: parseFloat((Math.random() * 360 - 180).toFixed(6))
-        },
-        population: Math.floor(Math.random() * 15000000) + 100000,
-        knownFor: ['Architecture', 'Cuisine', 'History', 'Art']
-      };
-      
-      return res.status(200).json(insights);
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to retrieve city insights'
-      });
-    }
-  });
+  } catch (error) {
+    reply.status(500).send({ error: "Server error" });
+  }
+};
 
-  app.get('/weather-predictions', (req, res) => {
-    const { cityId, apiKey } = req.query;
-    
-    if (apiKey && !apiKeys.has(apiKey)) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid API key'
-      });
-    }
-    
-    try {
-      if (cityId && !cities.some(c => c.id === cityId)) {
-        return res.status(404).json({
-          success: false,
-          error: 'City not found'
-        });
-      }
-      
-      const targetCities = cityId ? cities.filter(c => c.id === cityId) : cities;
-      
-      const predictions = targetCities.map(city => {
-        const cityPredictions = [];
-        const currentDate = new Date();
-        
-        for (let i = 0; i < 7; i++) {
-          const date = new Date(currentDate);
-          date.setDate(date.getDate() + i);
-          
-          cityPredictions.push({
-            min: Math.floor(Math.random() * 15) + 5,
-            max: Math.floor(Math.random() * 15) + 20,
-            when: date.toISOString().split('T')[0]
-          });
-        }
-        
-        return {
-          cityId: city.id,
-          cityName: city.name,
-          predictions: cityPredictions
-        };
-      });
-      
-      return res.status(200).json(predictions);
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to retrieve weather predictions'
-      });
-    }
-  });
+// ✅ Route DELETE /cities/:cityId/recipes/:recipeId
+export const deleteRecipe = async (request, reply) => {
+  const { cityId, recipeId } = request.params;
+
+  if (!recipesDB[cityId]) return reply.status(404).send({ error: "City not found" });
+
+  const recipeIndex = recipesDB[cityId].findIndex((r) => r.id == recipeId);
+  if (recipeIndex === -1) return reply.status(404).send({ error: "Recipe not found" });
+
+  recipesDB[cityId].splice(recipeIndex, 1);
+  reply.status(204).send();
 };

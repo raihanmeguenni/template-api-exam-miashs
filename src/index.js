@@ -1,31 +1,28 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const routes = require('./routes');
+import 'dotenv/config'
+import Fastify from 'fastify'
+import { getCityInfos, postRecipe, deleteRecipe } from './routes.js'
+import { submitForReview } from './submission.js'
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const fastify = Fastify({
+  logger: true,
+})
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// Définition des routes
+fastify.get('/cities/:cityId/infos', getCityInfos)
+fastify.post('/cities/:cityId/recipes', postRecipe)
+fastify.delete('/cities/:cityId/recipes/:recipeId', deleteRecipe)
 
-// Apply routes
-routes(app);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    error: 'Internal Server Error'
-  });
-});
-
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
-module.exports = app;
+// Lancement du serveur
+fastify.listen(
+  {
+    port: process.env.PORT || 3000,
+    host: process.env.RENDER_EXTERNAL_URL ? '0.0.0.0' : process.env.HOST || 'localhost',
+  },
+  function (err) {
+    if (err) {
+      fastify.log.error(err)
+      process.exit(1)
+    }
+    submitForReview(fastify) // Ne pas supprimer cette ligne, sinon le testeur ne fonctionnera pas
+  }
+)
