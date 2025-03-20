@@ -1,89 +1,94 @@
-import fetch from 'node-fetch';
+import fetch from "node-fetch";
 
 const API_BASE_URL = "https://api-ugi2pflmha-ew.a.run.app";
-const API_KEY = process.env.API_KEY; // Assurez-vous que cette variable est bien définie
-const recipesDB = {}; // Stockage des recettes en mémoire
+const API_KEY = process.env.API_KEY;
+const recipesDB = {}; // Stockage en mémoire des recettes
 
-export default async function routes(fastify) {
+// ✅ Route GET /cities/:cityId/infos
+export const getCityInfos = async (request, reply) => {
+  const { cityId } = request.params;
 
-  // ✅ Route GET /cities/:cityId/infos
-  fastify.get("/cities/:cityId/infos", async (request, reply) => {
-    const { cityId } = request.params;
-
-    try {
-      // Vérifier si la ville existe
-      const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}/insights?apiKey=${API_KEY}`);
-      if (!cityResponse.ok) return reply.status(404).send({ error: "City not found" });
-
-      const cityData = await cityResponse.json();
-
-      // Vérifier `coordinates`, `population`, `knownFor`
-      const coordinates = cityData.coordinates
-        ? [cityData.coordinates.latitude, cityData.coordinates.longitude]
-        : [0, 0];
-
-      const population = cityData.population || 0;
-      const knownFor = cityData.knownFor || [];
-
-      // Récupérer la météo
-      const weatherResponse = await fetch(`${API_BASE_URL}/weather-predictions?cityId=${cityId}&apiKey=${API_KEY}`);
-      const weatherPredictions = weatherResponse.ok
-        ? (await weatherResponse.json())[0].predictions.slice(0, 2)
-        : [{ when: "today", min: 0, max: 0 }, { when: "tomorrow", min: 0, max: 0 }];
-
-      // Assurer que `recipes` est bien un tableau
-      const recipes = recipesDB[cityId] || [];
-
-      // Réponse formatée
-      reply.send({
-        coordinates,
-        population,
-        knownFor,
-        weatherPredictions,
-        recipes,
-      });
-
-    } catch (error) {
-      reply.status(500).send({ error: "Server error" });
+  try {
+    // 🔹 Vérifier si la ville existe
+    const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}?apiKey=${API_KEY}`);
+    if (!cityResponse.ok) {
+      return reply.status(404).send({ error: "City not found" });
     }
-  });
+    const cityData = await cityResponse.json();
 
-  // ✅ Route POST /cities/:cityId/recipes
-  fastify.post("/cities/:cityId/recipes", async (request, reply) => {
-    const { cityId } = request.params;
-    const { content } = request.body;
+    // 🔹 Vérifier et formater les données
+    const coordinates = Array.isArray(cityData.coordinates) ? cityData.coordinates : [0, 0];
+    const population = typeof cityData.population === "number" ? cityData.population : 0;
+    const knownFor = Array.isArray(cityData.knownFor) ? cityData.knownFor : [];
 
-    // Vérifications des erreurs
-    if (!content) return reply.status(400).send({ error: "Recipe content is required" });
-    if (content.length < 10) return reply.status(400).send({ error: "Content too short" });
-    if (content.length > 2000) return reply.status(400).send({ error: "Content too long" });
+    // 🔹 Récupérer la météo
+    const weatherResponse = await fetch(`${API_BASE_URL}/weather-predictions?cityId=${cityId}&apiKey=${API_KEY}`);
+    let weatherPredictions = [
+      { when: "today", min: 0, max: 0 },
+      { when: "tomorrow", min: 0, max: 0 }
+    ];
 
-    try {
-      // Vérifier si la ville existe
-      const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}/insights?apiKey=${API_KEY}`);
-      if (!cityResponse.ok) return reply.status(404).send({ error: "City not found" });
-
-      if (!recipesDB[cityId]) recipesDB[cityId] = [];
-      const newRecipe = { id: recipesDB[cityId].length + 1, content };
-      recipesDB[cityId].push(newRecipe);
-
-      reply.status(201).send(newRecipe);
-
-    } catch (error) {
-      reply.status(500).send({ error: "Server error" });
+    if (weatherResponse.ok) {
+      const weatherData = await weatherResponse.json();
+      weatherPredictions = Array.isArray(weatherData.predictions) && weatherData.predictions.length >= 2
+        ? weatherData.predictions.slice(0, 2)
+        : weatherPredictions;
     }
-  });
 
-  // ✅ Route DELETE /cities/:cityId/recipes/:recipeId
-  fastify.delete("/cities/:cityId/recipes/:recipeId", async (request, reply) => {
-    const { cityId, recipeId } = request.params;
+    // 🔹 Récupérer les recettes associées à la ville
+    const recipes = recipesDB[cityId] || [];
 
-    if (!recipesDB[cityId]) return reply.status(404).send({ error: "City not found" });
+    // 🔹 Envoyer la réponse formatée
+    reply.send({
+      coordinates,
+      population,
+      knownFor,
+      weatherPredictions,
+      recipes,
+    });
 
-    const recipeIndex = recipesDB[cityId].findIndex((r) => r.id == recipeId);
-    if (recipeIndex === -1) return reply.status(404).send({ error: "Recipe not found" });
+  } catch (error) {
+    reply.status(500).send({ error: "Server error" });
+  }
+};
 
-    recipesDB[cityId].splice(recipeIndex, 1);
-    reply.status(204).send();
-  });
-}
+// ✅ Route POST /cities/:cityId/recipes
+export const postRecipe = async (request, reply) => {
+  const { cityId } = request.params;
+  const { content } = request.body;
+
+  if (!content) return reply.status(400).send({ error: "Recipe content is required" });
+  if (content.length < 10) return reply.status(400).send({ error: "Content too short" });
+  if (content.length > 2000) return reply.status(400).send({ error: "Content too long" });
+
+  try {
+    // Vérifier si la ville existe
+    const cityResponse = await fetch(`${API_BASE_URL}/cities/${cityId}?apiKey=${API_KEY}`);
+    if (!cityResponse.ok) return reply.status(404).send({ error: "City not found" });
+
+    if (!recipesDB[cityId]) recipesDB[cityId] = [];
+    const newRecipe = { id: recipesDB[cityId].length + 1, content };
+    recipesDB[cityId].push(newRecipe);
+
+    reply.status(201).send(newRecipe);
+
+  } catch (error) {
+    reply.status(500).send({ error: "Server error" });
+  }
+};
+
+// ✅ Route DELETE /cities/:cityId/recipes/:recipeId
+export const deleteRecipe = async (request, reply) => {
+  const { cityId, recipeId } = request.params;
+
+  if (!recipesDB[cityId]) return reply.status(404).send({ error: "City not found" });
+
+  const recipeIndex = recipesDB[cityId].findIndex((r) => r.id == recipeId);
+  if (recipeIndex === -1) return reply.status(404).send({ error: "Recipe not found" });
+
+  recipesDB[cityId].splice(recipeIndex, 1);
+  reply.status(204).send();
+};
+
+// ✅ Export des fonctions
+export default { getCityInfos, postRecipe, deleteRecipe };

@@ -1,15 +1,16 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
-import { getCityInfos, postRecipe, deleteRecipe } from './routes.js';
+import routes from './routes.js';
 import { submitForReview } from './submission.js';
 
 const fastify = Fastify({ logger: true });
 
-// ✅ Enregistrer toutes les routes API
-fastify.get('/cities/:cityId/infos', getCityInfos);
-fastify.post('/cities/:cityId/recipes', postRecipe);
-fastify.delete('/cities/:cityId/recipes/:recipeId', deleteRecipe);
+// Définition des routes
+fastify.get('/cities/:cityId/infos', routes.getCityInfos);
+fastify.post('/cities/:cityId/recipes', routes.postRecipe);
+fastify.delete('/cities/:cityId/recipes/:recipeId', routes.deleteRecipe);
 
+// Lancement du serveur
 fastify.listen(
   {
     port: process.env.PORT || 3000,
@@ -20,8 +21,6 @@ fastify.listen(
       fastify.log.error(err);
       process.exit(1);
     }
-
-    // 🔹 NE PAS SUPPRIMER : Soumet l'API pour validation après chaque déploiement
-    submitForReview(fastify);
+    submitForReview(fastify); // Soumission automatique de l'API après le démarrage
   }
 );
